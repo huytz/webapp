@@ -4,32 +4,28 @@ pipeline {
 
   parameters {
     string (
-      defaultValue: 'origin/master',
+      defaultValue: 'origin/main',
       description: 'Git branch to build and deploy.',
       name : 'GIT_BRANCH_NAME')
   }
 
   environment {
 
-      REPOSITORY = "communication-api"
+      CI_REGISTRY = ""
+
+      REPOSITORY = "webapp"
 
       CI_REGISTRY_USER = credentials('docker-hub-user')
       
       CI_REGISTRY_PASSWORD =  credentials('docker-hub-pass')
 
-      CI_PROJECT_PATH = "communication-api"
-      
-      CI_REGISTRY = "http://chart-registry"
-
-      USERNAME_HARBOR = ""
-      
-      PASSWORD_HARBOR = ""
+      CI_PROJECT_PATH = "webapp"
 
       IMAGE = "${CI_REGISTRY}/${CI_PROJECT_PATH}"
 
       NAMESPACE = "default"
       
-      DEPLOYMENT_NAME = "communication-api"
+      DEPLOYMENT_NAME = "webapp"
 
       KUBE_CONFIG = credentials('kubeconfig')
 
@@ -37,35 +33,6 @@ pipeline {
 
   stages {
     
-    stage("CodeAnalytics") {
-      agent {
-          docker { 
-            // jenkins start container with jenkins user, we must force to run as root
-            image 'mcr.microsoft.com/dotnet/core/sdk:3.1.301'
-            args '-u 0:0 --link sonarqube:sonarqube'
-          }
-      }
-      steps {
-        sh '''
-          export PATH="$PATH:/root/.dotnet/tools"
-          apt-get update -qq && apt-get install -y software-properties-common openjdk-11-jdk
-          dotnet --info
-          dotnet restore
-          dotnet tool install --global dotnet-sonarscanner
-          dotnet tool install --global dotnet-reportgenerator-globaltool
-          
-          cd src/Communication/S5E.Communication.Api
-          dotnet sonarscanner begin /k:"$projectKey" /d:sonar.host.url="$sonarUrl" /d:sonar.login="$sonarLogin" /d:sonar.cs.opencover.reportsPaths=$(pwd)/coverage/coverage.opencover-*.xml /d:sonar.coverage.exclusions="**Tests*.csproj"
-          dotnet build
-          dotnet add package coverlet.msbuild --version 2.8.0
-          dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:CoverletOutput=$(pwd)/coverage/coverage.opencover-communication.xml --no-build
-          ls -al $(pwd)/coverage
-          reportgenerator "-reports:$(pwd)/coverage/coverage.opencover-*.xml" "-targetdir:coverage/Cobertura" "-reporttypes:Cobertura;HTMLInline;HTMLChart"
-          dotnet sonarscanner end /d:sonar.login="$sonarLogin"
-        '''
-      }
-                
-    }
     stage("Build") {
       steps {
             sh """
@@ -99,7 +66,7 @@ pipeline {
               yamllint -c ${YAMLLINT_PATH}/k8s/.yamllint.yml -s $(find . -type f -name "Chart.yaml") || true
               yamllint -c ${YAMLLINT_PATH}/k8s/.yamllint.yml -s $(find . -type f -name "values.yaml") || true
               HELM_EXPERIMENTAL_OCI=1 helm chart save . ${CI_REGISTRY}/stepone/${REPOSITORY}:${VERSION}
-              HELM_EXPERIMENTAL_OCI=1 helm chart push ${CI_REGISTRY}/stepone/${REPOSITORY}:${VERSION}
+
           '''
         }
     }
@@ -124,10 +91,7 @@ pipeline {
               mv ./aws-iam-authenticator /usr/local/bin/aws-iam-authenticator
               mkdir -p ~/.kube
               echo "${KUBE_CONFIG}" > ~/.kube/config
-              HELM_EXPERIMENTAL_OCI=1 helm registry login $CI_REGISTRY -u $USERNAME_HARBOR -p $PASSWORD_HARBOR
               echo 'Deploy Helm release ...'
-              HELM_EXPERIMENTAL_OCI=1 helm chart pull $CI_REGISTRY/stepone/$DEPLOYMENT_NAME:newest
-              HELM_EXPERIMENTAL_OCI=1 helm chart export $CI_REGISTRY/stepone/$DEPLOYMENT_NAME:newest
               |
               helm upgrade --install \
                            --namespace=$NAMESPACE \
