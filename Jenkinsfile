@@ -11,13 +11,13 @@ pipeline {
 
   environment {
 
-      CI_REGISTRY = ""
+      CI_REGISTRY = "369537814977.dkr.ecr.ap-southeast-1.amazonaws.com"
 
       REPOSITORY = "webapp"
 
-      CI_REGISTRY_USER = credentials('docker-hub-user')
+      CI_REGISTRY_USER = credentials('aws-id')
       
-      CI_REGISTRY_PASSWORD =  credentials('docker-hub-pass')
+      CI_REGISTRY_PASSWORD =  credentials('aws-key')
 
       CI_PROJECT_PATH = "webapp"
 
@@ -37,9 +37,9 @@ pipeline {
       steps {
             sh """
               docker login -u ${CI_REGISTRY_USER} --password ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
-              echo 'Running build-communication-api...'
+              echo 'Running docker...'
               docker pull ${IMAGE}:latest || true
-              docker build --cache-from ${IMAGE}:latest -f src/Communication/S5E.Communication.Api/Dockerfile -t ${IMAGE}:latest -t ${IMAGE}:${env.GIT_BRANCH}_${env.GIT_COMMIT} .
+              docker build --cache-from ${IMAGE}:latest -f Dockerfile -t ${IMAGE}:latest -t ${IMAGE}:${env.GIT_BRANCH}_${env.GIT_COMMIT} .
               docker push ${IMAGE}:${env.GIT_BRANCH}_${env.GIT_COMMIT}
               docker push ${IMAGE}:latest
             """
@@ -61,11 +61,8 @@ pipeline {
               pip install yamllint=='1.8.1'
               export VERSION="newest"
               export YAMLLINT_PATH=$(pwd)
-              cd k8s/charts/communication-api
-              helm lint .
-              yamllint -c ${YAMLLINT_PATH}/k8s/.yamllint.yml -s $(find . -type f -name "Chart.yaml") || true
-              yamllint -c ${YAMLLINT_PATH}/k8s/.yamllint.yml -s $(find . -type f -name "values.yaml") || true
-              HELM_EXPERIMENTAL_OCI=1 helm chart save . ${CI_REGISTRY}/stepone/${REPOSITORY}:${VERSION}
+              cd k8s/charts/webapp
+              HELM_EXPERIMENTAL_OCI=1 helm chart save . ${CI_REGISTRY}/webapp/${REPOSITORY}:${VERSION}
 
           '''
         }
@@ -95,7 +92,7 @@ pipeline {
               |
               helm upgrade --install \
                            --namespace=$NAMESPACE \
-                           --set image.repository="$CI_REGISTRY/stepone/$DEPLOYMENT_NAME" \
+                           --set image.repository="$CI_REGISTRY/webapp/$DEPLOYMENT_NAME" \
                            --set image.tag=${BRANCH_NAME}_${GIT_COMMIT} \
                            --set imagePullSecrets[0].name=harbor-secret \
                            --timeout=600s \
